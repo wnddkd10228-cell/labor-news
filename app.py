@@ -69,13 +69,13 @@ def fetch_news(keywords):
     seen_titles = set()
     cutoff = datetime.now(pytz.utc) - timedelta(hours=48)
 
-    for keyword in keywords[:12]:
+    for keyword in keywords[:8]:
         try:
             encoded = quote(keyword)
             feed = feedparser.parse(
                 f"https://news.google.com/rss/search?q={encoded}&hl=ko&gl=KR&ceid=KR:ko"
             )
-            for entry in feed.entries[:5]:
+            for entry in feed.entries[:3]:
                 title = entry.get("title", "").strip()
                 if not title or title in seen_titles:
                     continue
@@ -120,8 +120,7 @@ def summarize_with_claude(articles, keywords):
 
     try:
         import anthropic
-        import httpx
-        client = anthropic.Anthropic(api_key=api_key, http_client=httpx.Client(verify=False))
+        client = anthropic.Anthropic(api_key=api_key)
 
         articles_text = "\n\n".join([
             f"제목: {a['title']}\n출처: {a['source']}\n발행일: {a['published']}\n링크: {a['link']}"
@@ -280,13 +279,29 @@ def api_summary():
         return jsonify({"error": "날짜 형식 오류"}), 400
     return jsonify(get_summary(target_date) or {})
 
+import threading
+_collecting = {"status": "idle"}
+
+def _background_collect():
+    try:
+        _collecting["status"] = "running"
+        collect_and_summarize()
+        _collecting["status"] = "done"
+    except Exception as e:
+        logger.error(f"백그라운드 수집 오류: {e}")
+        _collecting["status"] = "error"
+
 @app.route("/api/collect", methods=["POST"])
 def api_collect():
-    try:
-        result = collect_and_summarize()
-        return jsonify({"ok": True, "headline": result.get("headline", "") if result else ""})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+    if _collecting["status"] == "running":
+        return jsonify({"ok": True, "status": "running", "message": "이미 수집 중입니다"})
+    t = threading.Thread(target=_background_collect, daemon=True)
+    t.start()
+    return jsonify({"ok": True, "status": "started", "message": "수집을 시작했습니다. 약 1분 후 새로고침하세요."})
+
+@app.route("/api/status")
+def api_status():
+    return jsonify({"status": _collecting["status"]})
 
 @app.route("/admin", methods=["GET", "POST"])
 def admin():
