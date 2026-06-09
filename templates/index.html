@@ -233,18 +233,40 @@ async function collectNow() {
   const msg = document.getElementById('collectingMsg');
   if (btn) btn.disabled = true;
   if (msg) msg.style.display = 'block';
+
   try {
-    const res = await fetch('/api/collect', { method: 'POST' });
-    const data = await res.json();
-    if (data.ok) {
-      alert('수집 완료!\n\n' + (data.headline || '페이지를 새로고침합니다.'));
-      location.reload();
-    } else {
-      alert('수집 실패: ' + (data.error || '알 수 없는 오류'));
-    }
+    // 수집 시작 요청 (즉시 응답, 타임아웃 없음)
+    await fetch('/api/collect', { method: 'POST' });
+
+    // 5초마다 상태 확인 (최대 2분)
+    let tries = 0;
+    const maxTries = 24;
+    const timer = setInterval(async () => {
+      tries++;
+      try {
+        const res = await fetch('/api/status');
+        const data = await res.json();
+        if (data.status === 'done') {
+          clearInterval(timer);
+          alert('수집 완료! 페이지를 새로고침합니다.');
+          location.reload();
+        } else if (data.status === 'error') {
+          clearInterval(timer);
+          alert('수집 중 오류가 발생했습니다. 다시 시도해주세요.');
+          if (btn) btn.disabled = false;
+          if (msg) msg.style.display = 'none';
+        } else if (tries >= maxTries) {
+          clearInterval(timer);
+          alert('시간이 초과되었습니다. 잠시 후 페이지를 새로고침해보세요.');
+          if (btn) btn.disabled = false;
+          if (msg) msg.style.display = 'none';
+        }
+      } catch (e) {
+        // 서버가 깨어나는 중일 수 있으니 계속 시도
+      }
+    }, 5000);
   } catch(e) {
     alert('오류: ' + e.message);
-  } finally {
     if (btn) btn.disabled = false;
     if (msg) msg.style.display = 'none';
   }
