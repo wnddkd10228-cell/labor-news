@@ -281,11 +281,11 @@ def load_from_supabase(target_date):
 
 _cache = {}
 
-# ── 이메일 발송 ───────────────────────────────────────────────────────────────
-GMAIL_ADDRESS = os.environ.get("GMAIL_ADDRESS", "").strip()
-GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "").strip().replace(" ", "")
+# ── 이메일 발송 (Resend API) ──────────────────────────────────────────────────
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "").strip()
+MAIL_FROM = os.environ.get("MAIL_FROM", "onboarding@resend.dev").strip()
 MAIL_TO = os.environ.get("MAIL_TO", "").strip()
-EMAIL_ENABLED = bool(GMAIL_ADDRESS and GMAIL_APP_PASSWORD and MAIL_TO)
+EMAIL_ENABLED = bool(RESEND_API_KEY and MAIL_TO)
 
 def _build_email_html(summary, today_str):
     cats = summary.get("categories", {})
@@ -344,23 +344,33 @@ def send_email(summary, today_str):
         logger.info("이메일 미설정 — 발송 건너뜀")
         return False
     try:
-        import smtplib
-        from email.mime.multipart import MIMEMultipart
-        from email.mime.text import MIMEText
-
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = f"[노동법 브리핑] {today_str} {summary.get('headline','')[:30]}"
-        msg["From"] = GMAIL_ADDRESS
-        msg["To"] = MAIL_TO
-        msg.attach(MIMEText(_build_email_html(summary, today_str), "html"))
-
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=20) as server:
-            server.login(GMAIL_ADDRESS, GMAIL_APP_PASSWORD)
-            server.sendmail(GMAIL_ADDRESS, [m.strip() for m in MAIL_TO.split(",")], msg.as_string())
+        import urllib.request
+        recipients = [m.strip() for m in MAIL_TO.split(",") if m.strip()]
+        payload = json.dumps({
+            "from": MAIL_FROM,
+            "to": recipients,
+            "subject": f"[노동법 브리핑] {today_str} {summary.get('headline','')[:30]}",
+            "html": _build_email_html(summary, today_str)
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            "https://api.resend.com/emails",
+            data=payload, method="POST",
+            headers={
+                "Authorization": f"Bearer {RESEND_API_KEY}",
+                "Content-Type": "application/json"
+            }
+        )
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            resp.read()
         logger.info(f"✅ 이메일 발송 성공 → {MAIL_TO}")
         return True
     except Exception as e:
-        logger.error(f"이메일 발송 실패: {e}")
+        # 오류 본문도 함께 출력 (원인 파악용)
+        try:
+            err_body = e.read().decode("utf-8") if hasattr(e, "read") else ""
+        except Exception:
+            err_body = ""
+        logger.error(f"이메일 발송 실패: {e} {err_body}")
         return False
 
 def collect_and_summarize():
