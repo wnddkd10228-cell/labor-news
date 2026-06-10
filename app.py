@@ -281,9 +281,92 @@ def load_from_supabase(target_date):
 
 _cache = {}
 
+# ── 이메일 발송 ───────────────────────────────────────────────────────────────
+GMAIL_ADDRESS = os.environ.get("GMAIL_ADDRESS", "").strip()
+GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "").strip().replace(" ", "")
+MAIL_TO = os.environ.get("MAIL_TO", "").strip()
+EMAIL_ENABLED = bool(GMAIL_ADDRESS and GMAIL_APP_PASSWORD and MAIL_TO)
+
+def _build_email_html(summary, today_str):
+    cats = summary.get("categories", {})
+    def cat_row(label, val):
+        if not val or val == "해당 없음":
+            return ""
+        return f'<tr><td style="padding:8px 12px;font-weight:bold;color:#1a1a2e;white-space:nowrap;vertical-align:top">{label}</td><td style="padding:8px 12px;color:#444;line-height:1.6">{val}</td></tr>'
+
+    articles_html = ""
+    for a in summary.get("articles", []):
+        star = "⭐ " if a.get("importance") == "상" else ""
+        cat = a.get("category", "")
+        articles_html += f"""
+        <div style="border:1px solid #e0d8c5;border-radius:8px;padding:14px 16px;margin-bottom:12px">
+          <div style="font-size:12px;color:#888;margin-bottom:4px">{star}[{cat}] {a.get('source','')}</div>
+          <div style="font-size:16px;font-weight:bold;color:#1a1a2e;margin-bottom:6px;line-height:1.4">{a.get('title','')}</div>
+          <div style="font-size:14px;color:#444;line-height:1.7">{a.get('summary','')}</div>
+          <a href="{a.get('link','#')}" style="font-size:13px;color:#c0392b;text-decoration:none;display:inline-block;margin-top:8px">원문 보기 →</a>
+        </div>"""
+
+    insight = summary.get("insight", "")
+    insight_html = ""
+    if insight:
+        insight_html = f"""
+        <div style="background:#1a1a2e;color:#fff;border-radius:8px;padding:18px;margin-top:20px">
+          <div style="font-size:13px;color:#a78bfa;margin-bottom:8px">💡 공인노무사 실무 인사이트</div>
+          <div style="font-size:14px;line-height:1.8;color:#e0d8f5">{insight}</div>
+        </div>"""
+
+    return f"""<!DOCTYPE html><html><body style="margin:0;padding:0;background:#faf8f3">
+    <div style="max-width:640px;margin:0 auto;padding:24px;font-family:Apple SD Gothic Neo,Malgun Gothic,sans-serif">
+      <div style="text-align:center;background:#1a1a2e;color:#fff;border-radius:8px;padding:24px;margin-bottom:20px">
+        <div style="font-size:13px;color:#aaa;letter-spacing:2px">DAILY LABOR LAW BRIEFING</div>
+        <div style="font-size:24px;font-weight:bold;margin-top:8px">노동법·인사노무 브리핑</div>
+        <div style="font-size:13px;color:#999;margin-top:8px">{today_str}</div>
+      </div>
+      <div style="background:#1a1a2e;color:#fff;border-radius:8px;padding:16px 20px;border-left:5px solid #c0392b;margin-bottom:16px">
+        <div style="font-size:12px;color:#e74c3c;margin-bottom:6px">⚖️ 오늘의 핵심 이슈</div>
+        <div style="font-size:17px;font-weight:bold;line-height:1.5">{summary.get('headline','')}</div>
+      </div>
+      <div style="background:#f0ece0;border-radius:8px;padding:14px 18px;margin-bottom:20px;font-size:14px;line-height:1.7;color:#444">
+        <strong>오늘의 동향 —</strong> {summary.get('overview','')}
+      </div>
+      <table style="width:100%;border-collapse:collapse;background:#fff;border-radius:8px;margin-bottom:20px">{cat_row('📋 법령 개정', cats.get('legislation')) + cat_row('⚖️ 법원·노동위', cats.get('court')) + cat_row('🏛️ 행정해석', cats.get('admin')) + cat_row('🏢 기업 노사', cats.get('corporate'))}</table>
+      <div style="font-size:16px;font-weight:bold;color:#1a1a2e;margin-bottom:12px">📌 주요 기사</div>
+      {articles_html}
+      {insight_html}
+      <div style="text-align:center;margin-top:24px;font-size:12px;color:#aaa">
+        공인노무사 노동법·인사노무 브리핑 · Claude AI 분석<br>
+        <a href="https://labor-news.onrender.com" style="color:#aaa">웹에서 보기</a>
+      </div>
+    </div></body></html>"""
+
+def send_email(summary, today_str):
+    if not EMAIL_ENABLED:
+        logger.info("이메일 미설정 — 발송 건너뜀")
+        return False
+    try:
+        import smtplib
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.text import MIMEText
+
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = f"[노동법 브리핑] {today_str} {summary.get('headline','')[:30]}"
+        msg["From"] = GMAIL_ADDRESS
+        msg["To"] = MAIL_TO
+        msg.attach(MIMEText(_build_email_html(summary, today_str), "html"))
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=20) as server:
+            server.login(GMAIL_ADDRESS, GMAIL_APP_PASSWORD)
+            server.sendmail(GMAIL_ADDRESS, [m.strip() for m in MAIL_TO.split(",")], msg.as_string())
+        logger.info(f"✅ 이메일 발송 성공 → {MAIL_TO}")
+        return True
+    except Exception as e:
+        logger.error(f"이메일 발송 실패: {e}")
+        return False
+
 def collect_and_summarize():
     logger.info("📰 뉴스 수집 시작...")
     today = date.today()
+    today_str = today.strftime("%Y년 %m월 %d일")
     keywords = load_keywords()
     articles = fetch_news(keywords)
 
@@ -298,6 +381,10 @@ def collect_and_summarize():
     saved = save_to_supabase(summary, today)
     _cache[str(today)] = summary
     logger.info(f"요약 완료 (Supabase: {'성공' if saved else '로컬 캐시'})")
+
+    # 샘플 데이터가 아닐 때만 이메일 발송
+    if summary.get("headline") != "API 키 미설정 — 샘플 데이터입니다":
+        send_email(summary, today_str)
     return summary
 
 def get_summary(target_date=None):
@@ -385,7 +472,24 @@ def admin():
 @app.route("/health")
 def health():
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    return jsonify({"status": "ok", "api_key_set": bool(api_key), "api_key_preview": api_key[:12] + "..." if api_key else "없음"})
+    return jsonify({
+        "status": "ok",
+        "api_key_set": bool(api_key),
+        "api_key_preview": api_key[:12] + "..." if api_key else "없음",
+        "email_enabled": EMAIL_ENABLED,
+        "supabase_enabled": SUPABASE_ENABLED
+    })
+
+@app.route("/api/test-email", methods=["POST", "GET"])
+def test_email():
+    today = date.today()
+    summary = get_summary(today)
+    if not summary:
+        return jsonify({"ok": False, "error": "먼저 뉴스를 수집해주세요."}), 400
+    if not EMAIL_ENABLED:
+        return jsonify({"ok": False, "error": "이메일 환경변수가 설정되지 않았습니다."}), 400
+    ok = send_email(summary, today.strftime("%Y년 %m월 %d일"))
+    return jsonify({"ok": ok, "message": "발송 성공! 메일함을 확인하세요." if ok else "발송 실패 (로그 확인)"})
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
