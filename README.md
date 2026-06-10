@@ -1,215 +1,88 @@
-# 📰 노동·인사 뉴스 브리핑 자동화 앱
+# ⚖️ 노동법·인사노무 뉴스 브리핑 자동화 서비스
 
-매일 오전 7:30, 인사/노무/노동 관련 뉴스를 자동 수집하고 Claude AI로 요약해주는 웹 앱입니다.
+> 공인노무사·HR 담당자를 위해 매일 아침 노동 관련 주요 뉴스를 자동 수집·요약하고 이메일로 발송하는 웹 서비스
 
----
+매일 오전 7시 30분, 노동관계법령 개정·법원 판례·고용노동부 행정해석·주요 기업 노사이슈를 자동으로 수집하고, Claude AI가 공인노무사 관점에서 핵심만 요약해 웹과 이메일로 전달합니다. 사용자가 직접 사이트에 접속하지 않아도 매일 아침 정리된 브리핑을 메일함에서 받아볼 수 있습니다.
 
-## 📁 파일 구조
+## 🎯 만든 이유
 
-```
-labor-news/
-│
-├── app.py                 ← 핵심 코드 (Flask 서버 + 스케줄러 + AI 요약)
-├── requirements.txt       ← 설치할 패키지 목록
-├── Procfile               ← Render 배포용 실행 명령
-├── .env.example           ← 환경변수 예시 파일
-├── .gitignore             ← Git에 올리면 안 되는 파일 목록
-├── supabase_setup.sql     ← Supabase 테이블 생성 SQL
-│
-└── templates/
-    ├── index.html         ← 메인 화면 (오늘의 브리핑)
-    └── admin.html         ← 관리자 화면 (키워드 관리)
-```
+공인노무사 실무에서는 매일 쏟아지는 노동 관련 뉴스 중 법령 개정·판례·행정해석처럼 실무에 직접 영향을 주는 정보를 빠르게 파악하는 것이 중요합니다. 하지만 여러 매체를 일일이 확인하는 데는 시간이 많이 듭니다. 이 서비스는 그 과정을 완전히 자동화하여, 매일 아침 중요한 노동 이슈만 선별·요약해 메일로 받아볼 수 있도록 만들었습니다.
 
----
+## ✨ 주요 기능
 
-## 🚀 로컬에서 실행하기 (단계별)
+- **자동 뉴스 수집** — 매일 오전 7시 30분, 설정된 키워드로 최근 48시간 내 뉴스를 자동 수집
+- **AI 요약 및 분류** — Claude AI가 공인노무사 관점에서 핵심을 요약하고, 법령개정·판례·행정해석·노사이슈 4개 카테고리로 자동 분류
+- **중요도 표시** — 실무 영향도가 높은 기사를 우선 정렬하고 강조 표시
+- **실무 인사이트 제공** — 그날 이슈를 바탕으로 노무 담당자가 주의할 점을 AI가 제안
+- **이메일 자동 발송** — 매일 아침 요약 결과를 정리된 HTML 메일로 자동 전송
+- **관리자 키워드 관리** — 웹 화면에서 수집 키워드를 직접 추가·수정
+- **데이터 영구 보관** — 수집된 브리핑을 데이터베이스에 저장하여 지난 기록 조회 가능
 
-### 1단계 · Python 설치 확인
-
-터미널(또는 명령 프롬프트)을 열고 입력:
-```bash
-python --version
-# Python 3.10 이상이면 OK. 없으면 https://python.org 에서 설치
-```
-
-### 2단계 · 프로젝트 폴더로 이동
-
-```bash
-cd labor-news
-```
-
-### 3단계 · 가상환경 만들기 (선택하지 않아도 되지만 권장)
-
-```bash
-# macOS / Linux
-python -m venv venv
-source venv/bin/activate
-
-# Windows
-python -m venv venv
-venv\Scripts\activate
-```
-
-### 4단계 · 패키지 설치
-
-```bash
-pip install -r requirements.txt
-```
-
-### 5단계 · 환경변수 설정
-
-`.env.example` 파일을 복사해서 `.env` 파일을 만드세요:
-
-```bash
-# macOS / Linux
-cp .env.example .env
-
-# Windows
-copy .env.example .env
-```
-
-그런 다음 `.env` 파일을 메모장(또는 VS Code)으로 열고 실제 값 입력:
-
-```
-ANTHROPIC_API_KEY=sk-ant-실제키입력   ← 필수!
-SECRET_KEY=아무_랜덤_문자열_입력       ← 필수!
-SUPABASE_URL=...                       ← 선택 (없어도 실행됨)
-SUPABASE_KEY=...                       ← 선택
-```
-
-> 💡 **Anthropic API 키 발급 방법**
-> 1. https://console.anthropic.com 접속
-> 2. 회원가입 / 로그인
-> 3. "API Keys" 메뉴 → "Create Key"
-> 4. 발급된 키(`sk-ant-...`)를 `.env`에 붙여넣기
-
-### 6단계 · 서버 실행
-
-```bash
-python app.py
-```
-
-브라우저에서 http://localhost:5000 접속하면 메인 화면이 보입니다!
-
-### 7단계 · 뉴스 수집 테스트
-
-- 메인 화면의 **"🔄 지금 뉴스 수집하기"** 버튼 클릭
-- 약 30초~1분 후 뉴스가 표시되면 성공!
-
----
-
-## 🗄️ Supabase 설정 (선택 사항)
-
-Supabase를 연결하면 수집된 뉴스가 클라우드 DB에 저장되어  
-서버를 재시작해도 데이터가 유지됩니다.
-
-### 1단계 · Supabase 프로젝트 생성
-
-1. https://supabase.com → "Start your project"
-2. GitHub 계정으로 로그인
-3. "New project" → 이름 입력 → "Create new project"
-
-### 2단계 · 테이블 생성
-
-1. 좌측 메뉴 → **SQL Editor**
-2. `supabase_setup.sql` 파일 내용 전체 복사
-3. SQL Editor에 붙여넣기 → **"Run"** 클릭
-
-### 3단계 · API 키 가져오기
-
-1. 좌측 메뉴 → **Settings** → **API**
-2. `Project URL` 복사 → `.env`의 `SUPABASE_URL`에 입력
-3. `anon public` 키 복사 → `.env`의 `SUPABASE_KEY`에 입력
-
----
-
-## ☁️ Render에 배포하기
-
-무료로 인터넷에 공개할 수 있습니다!
-
-### 1단계 · GitHub에 코드 올리기
-
-```bash
-git init
-git add .
-git commit -m "첫 배포"
-git branch -M main
-git remote add origin https://github.com/계정명/labor-news.git
-git push -u origin main
-```
-
-> ⚠️ `.gitignore`에 `.env`가 포함되어 있어 비밀 키는 자동으로 제외됩니다.
-
-### 2단계 · Render 계정 만들기
-
-1. https://render.com → "Get Started for Free"
-2. GitHub 계정으로 로그인
-
-### 3단계 · 웹 서비스 생성
-
-1. Dashboard → **"New +"** → **"Web Service"**
-2. GitHub 저장소 선택
-3. 설정:
-   - **Name**: `labor-news` (원하는 이름)
-   - **Runtime**: `Python 3`
-   - **Build Command**: `pip install -r requirements.txt`
-   - **Start Command**: `gunicorn app:app --bind 0.0.0.0:$PORT`
-4. **"Create Web Service"** 클릭
-
-### 4단계 · 환경변수 설정
-
-Render 대시보드 → 해당 서비스 → **"Environment"** 탭:
-
-| Key | Value |
-|-----|-------|
-| `ANTHROPIC_API_KEY` | sk-ant-... |
-| `SUPABASE_URL` | https://xxx.supabase.co |
-| `SUPABASE_KEY` | eyJ... |
-| `SECRET_KEY` | 랜덤문자열 |
-
-**"Save Changes"** 클릭 → 자동 재배포 완료!
-
-> 🎉 배포가 완료되면 `https://labor-news.onrender.com` 같은 URL이 생성됩니다.
-
----
-
-## ⏰ 자동 수집 관련 참고사항
-
-- **로컬 실행**: `python app.py`로 실행 중일 때만 스케줄러가 동작합니다
-- **Render 무료 플랜**: 15분 동안 요청이 없으면 서버가 잠들 수 있습니다
-  - 해결책: [UptimeRobot](https://uptimerobot.com) 무료 서비스로 15분마다 핑 전송 설정
-  - UptimeRobot → "Add New Monitor" → HTTP(s) → URL 입력 → 15분 간격
-
----
-
-## 🔧 자주 묻는 질문
-
-**Q: 뉴스가 수집되지 않아요**  
-A: `ANTHROPIC_API_KEY`가 `.env`에 올바르게 입력되었는지 확인하세요. 인터넷 연결도 확인해주세요.
-
-**Q: 키워드를 바꾸고 싶어요**  
-A: http://localhost:5000/admin 접속 → 키워드 수정 → 저장
-
-**Q: Supabase 없이도 되나요?**  
-A: 네! Supabase 없이도 실행됩니다. 다만 서버 재시작 시 당일 데이터는 초기화됩니다.
-
-**Q: 뉴스 수집이 너무 느려요**  
-A: 구글 뉴스 RSS를 사용하며 키워드당 약 3초 소요됩니다. 키워드 수를 줄이면 빨라집니다.
-
----
-
-## 📝 기술 스택
+## 🛠️ 기술 스택
 
 | 구분 | 기술 |
 |------|------|
-| 백엔드 | Python + Flask |
+| 백엔드 | Python, Flask |
 | AI 요약 | Anthropic Claude API |
 | 뉴스 수집 | Google News RSS (feedparser) |
 | 스케줄러 | APScheduler |
 | 데이터베이스 | Supabase (PostgreSQL) |
+| 이메일 발송 | Resend API |
 | 배포 | Render |
+| 가동 유지 | UptimeRobot |
+
+## 🏗️ 동작 구조
+
+1. APScheduler가 매일 오전 7시 30분에 수집 작업을 실행
+2. 설정된 키워드로 Google News RSS에서 최근 48시간 내 뉴스 수집
+3. 수집된 기사를 Claude AI에 전달하여 요약·분류·인사이트 생성
+4. 결과를 Supabase에 저장하고 웹 화면에 표시
+5. Resend API를 통해 요약 내용을 이메일로 발송
+6. UptimeRobot이 주기적으로 서버를 깨워 자동 작업이 안정적으로 실행되도록 유지
+
+## 📂 프로젝트 구조
+
+```
+labor-news/
+├── app.py              # Flask 서버, 스케줄러, 수집·요약·발송 로직
+├── requirements.txt    # 의존성 패키지
+├── Procfile            # 배포 실행 설정
+├── supabase_setup.sql  # 데이터베이스 테이블 생성 SQL
+└── templates/
+    ├── index.html      # 메인 브리핑 화면
+    └── admin.html      # 관리자 화면
+```
+
+## ⚙️ 환경변수
+
+| 변수명 | 설명 |
+|--------|------|
+| `ANTHROPIC_API_KEY` | Claude AI API 키 |
+| `SECRET_KEY` | Flask 세션용 비밀키 |
+| `SUPABASE_URL` | Supabase 프로젝트 URL |
+| `SUPABASE_KEY` | Supabase API 키 |
+| `RESEND_API_KEY` | Resend 이메일 발송 API 키 |
+| `MAIL_TO` | 브리핑을 받을 이메일 주소 |
+| `MAIL_FROM` | (선택) 발송 주소, 미설정 시 기본값 사용 |
+
+## 🚀 로컬 실행
+
+```bash
+pip install -r requirements.txt
+# .env 파일에 위 환경변수 설정
+python app.py
+```
+
+## 🔧 트러블슈팅 경험
+
+이 프로젝트를 완성하기까지 다음과 같은 실제 문제들을 해결했습니다.
+
+- 사내 방화벽의 SSL 인증서 검사로 인한 API 연결 차단 → 클라우드 배포로 우회
+- 라이브러리 버전 충돌(`proxies` 인자 오류) → 의존성 버전 고정으로 해결
+- 무료 서버 메모리 한계 → 무거운 SDK 대신 REST API 직접 호출 방식으로 전환
+- AI 응답이 길어 JSON이 잘리는 문제 → 응답 길이 확대 및 복구 로직 추가
+- Render 무료 플랜의 SMTP 차단 → Resend API 기반 이메일 발송으로 전환
 
 ---
 
-Made with ❤️ for HR professionals
+개인 학습 및 포트폴리오 목적으로 제작한 프로젝트입니다.
