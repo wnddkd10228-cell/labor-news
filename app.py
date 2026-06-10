@@ -357,7 +357,8 @@ def send_email(summary, today_str):
             data=payload, method="POST",
             headers={
                 "Authorization": f"Bearer {RESEND_API_KEY}",
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                "User-Agent": "labor-news/1.0"
             }
         )
         with urllib.request.urlopen(req, timeout=20) as resp:
