@@ -19,14 +19,10 @@ logger = logging.getLogger(__name__)
 
 KST = pytz.timezone("Asia/Seoul")
 
-# ── Supabase (선택적) ─────────────────────────────────────────────────────────
-try:
-    from supabase import create_client
-    SUPABASE_URL = os.environ.get("SUPABASE_URL")
-    SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-    supabase = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
-except Exception:
-    supabase = None
+# ── Supabase (REST API 직접 호출 - 가벼움) ────────────────────────────────────
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "").strip().rstrip("/")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "").strip()
+SUPABASE_ENABLED = bool(SUPABASE_URL and SUPABASE_KEY)
 
 # ── 공인노무사 특화 키워드 ─────────────────────────────────────────────────────
 DEFAULT_KEYWORDS = [
@@ -197,30 +193,47 @@ def _mock_summary(articles):
     }
 
 def save_to_supabase(summary_data, collected_date):
-    if not supabase:
+    if not SUPABASE_ENABLED:
         return False
     try:
-        supabase.table("news_summaries").upsert({
+        import urllib.request
+        url = f"{SUPABASE_URL}/rest/v1/news_summaries?on_conflict=collected_date"
+        payload = json.dumps({
             "collected_date": str(collected_date),
             "headline": summary_data.get("headline", ""),
             "overview": summary_data.get("overview", ""),
-            "items": json.dumps(summary_data.get("articles", []), ensure_ascii=False),
+            "items": summary_data.get("articles", []),
             "insight": summary_data.get("insight", ""),
             "created_at": datetime.now(KST).isoformat()
-        }, on_conflict="collected_date").execute()
+        }).encode("utf-8")
+        req = urllib.request.Request(url, data=payload, method="POST", headers={
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}",
+            "Content-Type": "application/json",
+            "Prefer": "resolution=merge-duplicates"
+        })
+        urllib.request.urlopen(req, timeout=15)
         return True
     except Exception as e:
         logger.error(f"Supabase 저장 실패: {e}")
         return False
 
 def load_from_supabase(target_date):
-    if not supabase:
+    if not SUPABASE_ENABLED:
         return None
     try:
-        res = supabase.table("news_summaries").select("*").eq("collected_date", str(target_date)).execute()
-        if res.data:
-            row = res.data[0]
-            row["articles"] = json.loads(row["items"]) if isinstance(row.get("items"), str) else row.get("items", [])
+        import urllib.request
+        url = f"{SUPABASE_URL}/rest/v1/news_summaries?collected_date=eq.{target_date}&select=*"
+        req = urllib.request.Request(url, headers={
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}"
+        })
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        if data:
+            row = data[0]
+            items = row.get("items", [])
+            row["articles"] = json.loads(items) if isinstance(items, str) else items
             return row
     except Exception as e:
         logger.error(f"Supabase 조회 실패: {e}")
@@ -327,7 +340,7 @@ def admin():
 
     next_run = scheduler.get_job("daily_news")
     next_run_str = next_run.next_run_time.strftime("%Y-%m-%d %H:%M") if next_run and next_run.next_run_time else "알 수 없음"
-    return render_template("admin.html", keywords=keywords, next_run=next_run_str, supabase_connected=supabase is not None)
+    return render_template("admin.html", keywords=keywords, next_run=next_run_str, supabase_connected=SUPABASE_ENABLED)
 
 @app.route("/health")
 def health():
