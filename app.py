@@ -120,7 +120,7 @@ def summarize_with_claude(articles, keywords):
 
         articles_text = "\n\n".join([
             f"제목: {a['title']}\n출처: {a['source']}\n발행일: {a['published']}\n링크: {a['link']}"
-            for a in articles[:30]
+            for a in articles[:20]
         ])
 
         today = datetime.now(KST).strftime("%Y년 %m월 %d일")
@@ -168,7 +168,7 @@ articles는 우선순위 기준 중요한 5-8개만, importance 상인 것을 �
 
         message = client.messages.create(
             model="claude-haiku-4-5",
-            max_tokens=3000,
+            max_tokens=8000,
             messages=[{"role": "user", "content": prompt}]
         )
         raw = message.content[0].text.strip()
@@ -176,12 +176,52 @@ articles는 우선순위 기준 중요한 5-8개만, importance 상인 것을 �
             raw = raw.split("```")[1]
             if raw.startswith("json"):
                 raw = raw[4:]
-        result = json.loads(raw.strip())
+        raw = raw.strip()
+
+        try:
+            result = json.loads(raw)
+        except json.JSONDecodeError:
+            # 응답이 중간에 잘린 경우 복구 시도
+            logger.warning("JSON이 잘려서 복구를 시도합니다...")
+            result = _recover_json(raw)
+            if result is None:
+                raise
+
         logger.info("✅ Claude API 요약 성공!")
         return result
     except Exception as e:
         logger.error(f"Claude API 오류: {e}")
         return _mock_summary(articles)
+
+def _recover_json(raw):
+    """중간에 잘린 JSON을 최대한 복구"""
+    import re
+    # 완성된 article 객체들만 추출
+    try:
+        headline = re.search(r'"headline"\s*:\s*"([^"]*)"', raw)
+        overview = re.search(r'"overview"\s*:\s*"([^"]*)"', raw)
+        insight = re.search(r'"insight"\s*:\s*"([^"]*)"', raw)
+
+        # 완성된 article 블록 찾기 (닫는 중괄호까지 있는 것만)
+        articles = []
+        for m in re.finditer(r'\{\s*"category"\s*:\s*"([^"]*)"\s*,\s*"title"\s*:\s*"([^"]*)"\s*,\s*"source"\s*:\s*"([^"]*)"\s*,\s*"link"\s*:\s*"([^"]*)"\s*,\s*"summary"\s*:\s*"([^"]*)"\s*,\s*"importance"\s*:\s*"([^"]*)"', raw):
+            articles.append({
+                "category": m.group(1), "title": m.group(2), "source": m.group(3),
+                "link": m.group(4), "summary": m.group(5), "importance": m.group(6)
+            })
+
+        if not articles:
+            return None
+
+        return {
+            "headline": headline.group(1) if headline else "오늘의 노동·인사 브리핑",
+            "overview": overview.group(1) if overview else "",
+            "categories": {"legislation": "해당 없음", "court": "해당 없음", "admin": "해당 없음", "corporate": "해당 없음"},
+            "articles": articles,
+            "insight": insight.group(1) if insight else ""
+        }
+    except Exception:
+        return None
 
 def _mock_summary(articles):
     return {
