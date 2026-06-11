@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import threading
 from datetime import datetime, date, timedelta
 from flask import Flask, render_template, jsonify, request, redirect, url_for, flash
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -430,7 +431,6 @@ def api_summary():
         return jsonify({"error": "날짜 형식 오류"}), 400
     return jsonify(get_summary(target_date) or {})
 
-import threading
 _collecting = {"status": "idle"}
 
 def _background_collect():
@@ -489,6 +489,29 @@ def health():
         "api_key_preview": api_key[:12] + "..." if api_key else "없음",
         "email_enabled": EMAIL_ENABLED,
         "supabase_enabled": SUPABASE_ENABLED
+    })
+
+@app.route("/cron")
+def cron():
+    """UptimeRobot이 5분마다 호출. 아침 수집 시간대(KST 07:30~07:55)에만,
+    그리고 오늘 아직 수집을 안 했을 때만 실제 수집을 실행한다."""
+    now = datetime.now(KST)
+    today = date.today()
+
+    in_window = (now.hour == 7 and 30 <= now.minute <= 55)
+    already_done = str(today) in _cache or (get_summary(today) is not None)
+
+    if in_window and not already_done and _collecting["status"] != "running":
+        t = threading.Thread(target=_background_collect, daemon=True)
+        t.start()
+        logger.info("⏰ 아침 자동 수집 트리거됨 (cron)")
+        return jsonify({"triggered": True, "time": now.strftime("%H:%M")})
+
+    return jsonify({
+        "triggered": False,
+        "time": now.strftime("%H:%M"),
+        "in_window": in_window,
+        "already_done": already_done
     })
 
 @app.route("/api/test-email", methods=["POST", "GET"])
