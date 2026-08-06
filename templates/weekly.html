@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>주간 리뷰 · 노동법 브리핑</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;600;700&family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink:#1a1a2e; --ink-light:#4a4a6a;
+    --paper:#faf8f3; --paper-warm:#f0ece0;
+    --accent:#c0392b; --accent-light:#e74c3c;
+    --rule:#d4c9b0; --pick:#2d7d5a; --pick-bg:#eafaf1;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--paper);color:var(--ink);font-family:'Noto Sans KR',sans-serif}
+
+  .masthead{background:var(--ink);color:var(--paper);text-align:center;padding:1.8rem 1rem 1.4rem;border-bottom:4px solid var(--accent)}
+  .masthead-label{font-size:.68rem;letter-spacing:.22em;color:#aaa;text-transform:uppercase;margin-bottom:.4rem}
+  .masthead-title{font-family:'Noto Serif KR',serif;font-size:clamp(1.4rem,4vw,2.2rem);font-weight:700}
+  .masthead-title span{color:var(--accent-light)}
+
+  nav{background:var(--paper-warm);border-bottom:1px solid var(--rule);display:flex;justify-content:center}
+  nav a{padding:.7rem 1.3rem;text-decoration:none;font-size:.82rem;font-weight:500;color:var(--ink-light);border-bottom:2px solid transparent;transition:.2s}
+  nav a:hover,nav a.active{color:var(--accent);border-color:var(--accent)}
+
+  .container{max-width:900px;margin:0 auto;padding:1.6rem 1rem 3rem}
+
+  /* 주 이동 */
+  .week-nav{display:flex;align-items:center;justify-content:space-between;gap:.6rem;background:var(--paper-warm);border:1px solid var(--rule);border-radius:8px;padding:.7rem 1rem;margin-bottom:1.2rem}
+  .week-nav a{text-decoration:none;color:var(--accent);font-size:.82rem;font-weight:600;white-space:nowrap}
+  .week-title{font-family:'Noto Serif KR',serif;font-weight:700;font-size:.95rem;text-align:center}
+  .week-sub{font-size:.72rem;color:var(--ink-light);font-weight:400;margin-top:.15rem}
+
+  /* 선택 현황 바 */
+  .pickbar{position:sticky;top:0;z-index:20;background:var(--ink);color:#fff;border-radius:8px;padding:.7rem 1rem;margin-bottom:1.2rem;display:flex;align-items:center;justify-content:space-between;gap:.6rem;flex-wrap:wrap}
+  .pickbar .count{font-size:.85rem}
+  .pickbar .count b{color:#7ee0b0;font-size:1.05rem}
+  .btn{padding:.55rem 1.1rem;background:var(--accent);color:#fff;border:none;border-radius:5px;font-size:.82rem;font-family:inherit;cursor:pointer;transition:.2s}
+  .btn:hover{background:var(--accent-light)}
+  .btn:disabled{background:#777;cursor:not-allowed}
+  .btn-green{background:var(--pick)}
+  .btn-green:hover{background:#359169}
+
+  /* 날짜 그룹 */
+  .day-group{margin-bottom:1.6rem}
+  .day-head{display:flex;align-items:center;gap:.6rem;margin-bottom:.6rem}
+  .day-badge{background:var(--ink);color:#fff;font-size:.75rem;font-weight:700;padding:.25rem .6rem;border-radius:4px;white-space:nowrap}
+  .day-headline{font-size:.8rem;color:var(--ink-light);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  /* 기사 카드 */
+  .art{background:#fff;border:1px solid var(--rule);border-radius:7px;padding:.9rem 1rem;margin-bottom:.6rem;border-left:4px solid var(--rule);transition:.15s}
+  .art.picked{border-left-color:var(--pick);background:var(--pick-bg)}
+  .art-top{display:flex;align-items:flex-start;gap:.6rem}
+  .art-check{width:19px;height:19px;flex-shrink:0;margin-top:.15rem;cursor:pointer;accent-color:var(--pick)}
+  .art-body{flex:1;min-width:0}
+  .art-meta{display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.3rem}
+  .tag{font-size:.63rem;padding:.12rem .42rem;border-radius:3px;font-weight:700;background:var(--paper-warm);color:var(--ink-light)}
+  .tag.hi{background:#fdecea;color:var(--accent)}
+  .art-title{font-family:'Noto Serif KR',serif;font-size:.94rem;font-weight:600;line-height:1.5;margin-bottom:.3rem;cursor:pointer}
+  .art-sum{font-size:.81rem;color:var(--ink-light);line-height:1.65}
+  .art-link{font-size:.74rem;color:var(--accent);text-decoration:none;display:inline-block;margin-top:.4rem}
+
+  .comment-box{margin-top:.6rem;display:none}
+  .art.picked .comment-box{display:block}
+  .comment-box label{font-size:.72rem;color:var(--pick);font-weight:600;display:block;margin-bottom:.25rem}
+  .comment-box textarea{width:100%;border:1px solid var(--rule);border-radius:5px;padding:.5rem .65rem;font-family:inherit;font-size:.82rem;line-height:1.6;resize:vertical;min-height:56px}
+  .comment-box textarea:focus{outline:none;border-color:var(--pick)}
+
+  .empty{text-align:center;padding:3rem 1.5rem;border:2px dashed var(--rule);border-radius:8px;color:var(--ink-light)}
+  .empty .ico{font-size:2.4rem;margin-bottom:.7rem}
+
+  /* 결과 모달 */
+  .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:50;padding:1.2rem;overflow-y:auto}
+  .overlay.on{display:block}
+  .modal{max-width:720px;margin:1.5rem auto;background:var(--paper);border-radius:10px;padding:1.5rem;position:relative}
+  .modal h2{font-family:'Noto Serif KR',serif;font-size:1.2rem;margin-bottom:.3rem}
+  .modal .close{position:absolute;top:.9rem;right:1.1rem;background:none;border:none;font-size:1.4rem;cursor:pointer;color:var(--ink-light)}
+  .sec{background:#fff;border:1px solid var(--rule);border-radius:7px;padding:.85rem 1rem;margin-bottom:.6rem}
+  .sec-time{font-size:.7rem;color:var(--accent);font-weight:700;letter-spacing:.05em}
+  .sec-topic{font-size:.82rem;font-weight:600;margin:.2rem 0 .4rem}
+  .sec-script{font-size:.87rem;line-height:1.8}
+  .sec-cap{font-size:.72rem;color:var(--pick);margin-top:.4rem;font-weight:600}
+  .hook-box{background:var(--ink);color:#fff;border-radius:7px;padding:.9rem 1.1rem;margin-bottom:.7rem}
+  .hook-box .lbl{font-size:.66rem;color:var(--accent-light);letter-spacing:.15em;margin-bottom:.3rem}
+  .hook-box .txt{font-size:1rem;font-weight:600;line-height:1.5}
+  .tagline{font-size:.78rem;color:var(--ink-light);line-height:1.9;background:var(--paper-warm);border-radius:6px;padding:.7rem .9rem;margin-top:.6rem}
+
+  .spin{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite;margin-right:.35rem;vertical-align:middle}
+  @keyframes sp{to{transform:rotate(360deg)}}
+
+  footer{text-align:center;padding:1.8rem;font-size:.76rem;color:#bbb;border-top:1px solid var(--rule)}
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <p class="masthead-label">Weekly Review · 릴스 대본 만들기</p>
+  <h1 class="masthead-title">주간 <span>리뷰</span></h1>
+</header>
+
+<nav>
+  <a href="/">오늘의 브리핑</a>
+  <a href="/weekly" class="active">📅 주간 리뷰</a>
+  <a href="/admin">⚙️ 관리자</a>
+</nav>
+
+<main class="container">
+
+  <div class="week-nav">
+    <a href="/weekly?week={{ prev_week }}">← 지난주</a>
+    <div>
+      <div class="week-title">{{ week_label }}</div>
+      <div class="week-sub">수집된 기사 {{ total }}건</div>
+    </div>
+    <a href="/weekly?week={{ next_week }}">다음주 →</a>
+  </div>
+
+  {% if week_data %}
+
+  <div class="pickbar">
+    <span class="count">선택한 기사 <b id="cnt">0</b>건</span>
+    <button class="btn btn-green" id="genBtn" onclick="generateScript()" disabled>🎬 90초 릴스 대본 만들기</button>
+  </div>
+
+  {% for day in week_data %}
+  <div class="day-group">
+    <div class="day-head">
+      <span class="day-badge">{{ day.label }}</span>
+      <span class="day-headline">{{ day.headline }}</span>
+    </div>
+
+    {% for a in day.articles %}
+    <div class="art" data-idx="{{ day.date }}-{{ loop.index }}">
+      <div class="art-top">
+        <input type="checkbox" class="art-check" onchange="toggle(this)">
+        <div class="art-body">
+          <div class="art-meta">
+            {% if a.category %}<span class="tag">{{ a.category }}</span>{% endif %}
+            {% if a.importance == '상' %}<span class="tag hi">★ 중요</span>{% endif %}
+            <span class="tag">{{ a.source }}</span>
+          </div>
+          <div class="art-title" onclick="clickTitle(this)">{{ a.title }}</div>
+          <div class="art-sum">{{ a.summary }}</div>
+          <a href="{{ a.link }}" target="_blank" rel="noopener" class="art-link">원문 보기 →</a>
+
+          <div class="comment-box">
+            <label>💬 내 코멘트 (대본에 반영됩니다)</label>
+            <textarea placeholder="이 뉴스에 대해 강조하고 싶은 점, 실무 조언 등을 적어주세요"></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+
+  {% else %}
+  <div class="empty">
+    <p class="ico">📭</p>
+    <p>이 주에 저장된 브리핑이 없습니다.</p>
+    <p style="font-size:.8rem;margin-top:.5rem">매일 수집된 내용이 이곳에 쌓입니다.</p>
+  </div>
+  {% endif %}
+
+</main>
+
+<div class="overlay" id="ov">
+  <div class="modal">
+    <button class="close" onclick="closeModal()">×</button>
+    <div id="result"></div>
+  </div>
+</div>
+
+<footer>공인노무사 노동법 브리핑 · 주간 리뷰</footer>
+
+<script>
+const WEEK_LABEL = "{{ week_label }}";
+
+function clickTitle(el){
+  const card = el.closest('.art');
+  const cb = card.querySelector('.art-check');
+  cb.checked = !cb.checked;
+  toggle(cb);
+}
+
+function toggle(cb){
+  const card = cb.closest('.art');
+  card.classList.toggle('picked', cb.checked);
+  updateCount();
+}
+
+function updateCount(){
+  const n = document.querySelectorAll('.art.picked').length;
+  document.getElementById('cnt').textContent = n;
+  document.getElementById('genBtn').disabled = (n === 0);
+}
+
+function collectSelected(){
+  const out = [];
+  document.querySelectorAll('.art.picked').forEach(card => {
+    out.push({
+      title: card.querySelector('.art-title').textContent.trim(),
+      source: card.querySelectorAll('.tag')[card.querySelectorAll('.tag').length-1].textContent.trim(),
+      summary: card.querySelector('.art-sum').textContent.trim(),
+      comment: card.querySelector('textarea').value.trim()
+    });
+  });
+  return out;
+}
+
+async function generateScript(){
+  const sel = collectSelected();
+  if(!sel.length){ alert('기사를 1개 이상 선택해주세요.'); return; }
+
+  const btn = document.getElementById('genBtn');
+  const old = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> 대본 만드는 중...';
+
+  try{
+    const res = await fetch('/api/generate-script', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ selected: sel, week_label: WEEK_LABEL })
+    });
+    const data = await res.json();
+    if(data.ok){ showScript(data.script); }
+    else { alert('생성 실패: ' + (data.error || '알 수 없는 오류')); }
+  }catch(e){
+    alert('오류: ' + e.message);
+  }finally{
+    btn.disabled = false;
+    btn.innerHTML = old;
+    updateCount();
+  }
+}
+
+function showScript(s){
+  let html = `<h2>🎬 ${s.title || '릴스 대본'}</h2>
+    <p style="font-size:.78rem;color:#4a4a6a;margin-bottom:1rem">90초 분량 · ${WEEK_LABEL}</p>
+    <div class="hook-box">
+      <div class="lbl">HOOK · 첫 3초</div>
+      <div class="txt">${s.hook || ''}</div>
+    </div>`;
+
+  (s.sections || []).forEach(sec => {
+    html += `<div class="sec">
+      <div class="sec-time">${sec.time || ''}</div>
+      <div class="sec-topic">${sec.topic || ''}</div>
+      <div class="sec-script">${sec.script || ''}</div>
+      ${sec.caption ? `<div class="sec-cap">자막: ${sec.caption}</div>` : ''}
+    </div>`;
+  });
+
+  if(s.outro){
+    html += `<div class="sec" style="border-left:4px solid #c0392b">
+      <div class="sec-time">OUTRO</div>
+      <div class="sec-script">${s.outro}</div>
+    </div>`;
+  }
+
+  if(s.caption_text || s.hashtags){
+    html += `<div class="tagline">
+      ${s.caption_text ? `<b>게시물 설명</b><br>${s.caption_text}<br><br>` : ''}
+      ${(s.hashtags||[]).map(h => h.startsWith('#') ? h : '#'+h).join(' ')}
+    </div>`;
+  }
+
+  html += `<button class="btn" style="margin-top:1rem;width:100%" onclick="copyScript()">📋 대본 전체 복사</button>`;
+
+  document.getElementById('result').innerHTML = html;
+  document.getElementById('ov').classList.add('on');
+  window._script = s;
+}
+
+function copyScript(){
+  const s = window._script;
+  let t = `[${s.title}]\n\n${s.hook}\n\n`;
+  (s.sections||[]).forEach(sec => {
+    t += `(${sec.time}) ${sec.topic}\n${sec.script}\n\n`;
+  });
+  if(s.outro) t += `${s.outro}\n\n`;
+  if(s.caption_text) t += `---\n${s.caption_text}\n`;
+  if(s.hashtags) t += (s.hashtags||[]).map(h=>h.startsWith('#')?h:'#'+h).join(' ');
+
+  navigator.clipboard.writeText(t)
+    .then(()=>alert('대본이 복사되었습니다!'))
+    .catch(()=>alert('복사 실패. 직접 드래그해서 복사해주세요.'));
+}
+
+function closeModal(){ document.getElementById('ov').classList.remove('on'); }
+document.getElementById('ov').addEventListener('click', e => {
+  if(e.target.id === 'ov') closeModal();
+});
+</script>
+</body>
+</html>
