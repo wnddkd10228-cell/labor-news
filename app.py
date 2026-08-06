@@ -280,6 +280,106 @@ def load_from_supabase(target_date):
         logger.error(f"Supabase 조회 실패: {e}")
     return None
 
+def load_week_from_supabase(start_date, end_date):
+    """주간(월~일) 브리핑을 한 번에 조회"""
+    if not SUPABASE_ENABLED:
+        return []
+    try:
+        import urllib.request
+        url = (f"{SUPABASE_URL}/rest/v1/news_summaries"
+               f"?collected_date=gte.{start_date}&collected_date=lte.{end_date}"
+               f"&select=*&order=collected_date.asc")
+        req = urllib.request.Request(url, headers={
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}"
+        })
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        for row in data:
+            items = row.get("items", [])
+            row["articles"] = json.loads(items) if isinstance(items, str) else items
+        return data
+    except Exception as e:
+        logger.error(f"Supabase 주간 조회 실패: {e}")
+        return []
+
+def get_week_range(target=None):
+    """해당 날짜가 속한 주의 월요일~일요일 반환"""
+    if target is None:
+        target = date.today()
+    monday = target - timedelta(days=target.weekday())
+    sunday = monday + timedelta(days=6)
+    return monday, sunday
+
+def generate_reels_script(selected, week_label):
+    """선택된 기사+코멘트로 90초 릴스 대본 생성"""
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if not api_key:
+        return {"error": "ANTHROPIC_API_KEY가 설정되지 않았습니다."}
+
+    items_text = ""
+    for i, s in enumerate(selected, 1):
+        items_text += f"\n[{i}] 제목: {s.get('title','')}\n"
+        items_text += f"    출처: {s.get('source','')}\n"
+        items_text += f"    요약: {s.get('summary','')}\n"
+        if s.get("comment"):
+            items_text += f"    내 코멘트: {s.get('comment')}\n"
+
+    prompt = f"""당신은 공인노무사의 SNS 콘텐츠 작가입니다.
+아래는 {week_label} 주간 노동 뉴스 중 선별한 항목입니다.
+이를 바탕으로 인스타그램 릴스/유튜브 쇼츠용 **90초 분량** 대본을 작성하세요.
+
+[선별된 뉴스]
+{items_text}
+
+[작성 규칙]
+- 전체 분량: 말하기 기준 90초 (한국어 약 280~330자 내외의 발화량)
+- 구어체로, 실제로 말하듯이 자연스럽게
+- 첫 3초 안에 시선을 잡는 후킹 문장으로 시작
+- 각 뉴스는 "무슨 일이 있었나 → 실무상 의미" 순서로
+- '내 코멘트'가 있으면 그 관점을 반드시 반영
+- 전문용어는 쉽게 풀어서
+- 마지막은 다음 주 예고 또는 팔로우 유도로 마무리
+
+반드시 아래 JSON 형식으로만 응답 (마크다운 코드블록 없이 순수 JSON):
+{{
+  "title": "영상 제목 (25자 이내, 클릭 유도형)",
+  "hook": "첫 3초 후킹 멘트 (한 문장)",
+  "sections": [
+    {{
+      "time": "0:03-0:20",
+      "topic": "다룰 뉴스 주제",
+      "script": "실제 말할 대사",
+      "caption": "화면에 띄울 자막 키워드 (10자 이내)"
+    }}
+  ],
+  "outro": "마무리 멘트",
+  "hashtags": ["해시태그5~8개"],
+  "caption_text": "게시물 설명글 (150자 내외)"
+}}
+
+sections는 후킹 이후부터 아웃트로 전까지를 시간대별로 나누세요."""
+
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+        message = client.messages.create(
+            model="claude-haiku-4-5",
+            max_tokens=4000,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        raw = message.content[0].text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        result = json.loads(raw.strip())
+        logger.info("✅ 릴스 대본 생성 성공")
+        return result
+    except Exception as e:
+        logger.error(f"대본 생성 오류: {e}")
+        return {"error": str(e)}
+
 _cache = {}
 
 # ── 이메일 발송 (Resend API) ──────────────────────────────────────────────────
@@ -524,6 +624,65 @@ def test_email():
         return jsonify({"ok": False, "error": "이메일 환경변수가 설정되지 않았습니다."}), 400
     ok = send_email(summary, today.strftime("%Y년 %m월 %d일"))
     return jsonify({"ok": ok, "message": "발송 성공! 메일함을 확인하세요." if ok else "발송 실패 (로그 확인)"})
+
+@app.route("/weekly")
+def weekly():
+    """주간 리뷰 화면 - 그 주 기사 모아보기 + 선택 + 코멘트"""
+    week_param = request.args.get("week")
+    if week_param:
+        try:
+            base = date.fromisoformat(week_param)
+        except ValueError:
+            base = date.today()
+    else:
+        base = date.today()
+
+    monday, sunday = get_week_range(base)
+    days = load_week_from_supabase(monday, sunday)
+
+    # 날짜별 기사 정리
+    week_data = []
+    total = 0
+    for row in days:
+        arts = row.get("articles", []) or []
+        total += len(arts)
+        try:
+            d = date.fromisoformat(str(row.get("collected_date")))
+            label = d.strftime("%m/%d") + f" ({'월화수목금토일'[d.weekday()]})"
+        except Exception:
+            label = str(row.get("collected_date"))
+        week_data.append({
+            "date": str(row.get("collected_date")),
+            "label": label,
+            "headline": row.get("headline", ""),
+            "articles": arts
+        })
+
+    prev_week = (monday - timedelta(days=7)).isoformat()
+    next_week = (monday + timedelta(days=7)).isoformat()
+
+    return render_template("weekly.html",
+                           week_data=week_data,
+                           total=total,
+                           week_label=f"{monday.strftime('%Y년 %m월 %d일')} ~ {sunday.strftime('%m월 %d일')}",
+                           monday=monday.isoformat(),
+                           prev_week=prev_week,
+                           next_week=next_week)
+
+@app.route("/api/generate-script", methods=["POST"])
+def api_generate_script():
+    """선택한 기사 + 코멘트로 릴스 대본 생성"""
+    data = request.get_json(silent=True) or {}
+    selected = data.get("selected", [])
+    week_label = data.get("week_label", "")
+
+    if not selected:
+        return jsonify({"ok": False, "error": "기사를 1개 이상 선택해주세요."}), 400
+
+    result = generate_reels_script(selected, week_label)
+    if "error" in result:
+        return jsonify({"ok": False, "error": result["error"]}), 500
+    return jsonify({"ok": True, "script": result})
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
